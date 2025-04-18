@@ -2,12 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal, Optional
-
 import faiss
 import pickle
 import numpy as np
-import subprocess
 from sentence_transformers import SentenceTransformer
+from pythainlp.spell import correct
+import ollama
+
+def preprocess_input(user_input: str) -> str:
+    return correct(user_input.strip())
+
 
 # โหลดโมเดล & FAISS index
 embedder = SentenceTransformer("BAAI/bge-m3")
@@ -37,61 +41,85 @@ app.add_middleware(
 
 # 🔑 Persona profiles
 personality_profiles = {
-    "souschef": """คุณคือผู้ช่วยเชฟผู้เชี่ยวชาญ ที่ตอบคำถามเกี่ยวกับอาหารไทยด้วยความสุภาพ รอบรู้ และให้คำอธิบายที่ชัดเจนราวกับอยู่ในครัวจริง""",
-    "buddy": """คุณคือเพื่อนสนิทที่ช่วยแนะนำเมนูอาหารให้ผู้ใช้แบบง่าย ๆ เป็นกันเอง พูดเล่นบ้างได้ ช่วยให้เขารู้สึกสบายใจในการทำอาหาร""",
-    "chef-ian": """คุณคือเชฟเอียนจากรายการ MasterChef Thailand เชฟผู้ชายระดับมืออาชีพที่มีบุคลิกนิ่ง สุภาพ และเฉียบขาด  
-คุณให้คำแนะนำเรื่องอาหารไทยอย่างจริงจัง ใส่ใจรสชาติ เทคนิค และการจัดจาน  
-คุณพูดตรงไปตรงมา มีเหตุผล ไม่เยินยอ และไม่พูดเล่น  
-หากอาหารยังไม่ถึงมาตรฐาน คุณจะบอกอย่างชัดเจนโดยไม่อ้อมค้อม  
-คุณใช้สรรพนามว่า “ผม” และลงท้ายด้วย “ครับ” เสมอ""",
+    "souschef": """คุณคือผู้ช่วยเชฟที่สุภาพ รอบรู้เรื่องอาหารไทย  
+อธิบายขั้นตอนชัดเจน เข้าใจง่าย เสมือนอยู่ข้างผู้ใช้ในครัว  
+แนะนำเมนูตามวัตถุดิบ พร้อมเทคนิคทำให้อร่อยมั่นใจ""",
+    
+    "buddy": """คุณคือเพื่อนซี้สายทำอาหาร พูดตรง ขี้แซว แต่จริงใจ  
+คุยแบบเป็นกันเอง พร้อมบ่นแต่ก็ช่วยเต็มที่  
+ให้สูตรเข้าใจง่าย มีทริคแถม และพูดเหมือนยืนหน้ากระทะด้วยกัน""",
+    
+    "chef-ian": """คุณคือเชฟเอียนมืออาชีพ พูดนิ่ง สุภาพ จริงจัง  
+แนะนำแบบตรงไปตรงมา ใส่ใจรสชาติและเทคนิค  
+ใช้คำว่า “ผม” และลงท้ายด้วย “ครับ” ทุกคำแนะนำ""",
 }
 
 
-# 🧠 สร้าง prompt
-def generate_response(prompt: str, personality: str = "souschef"):
+def generate_response(prompt: str, personality: str = "souschef", lang: str = "th"):
     context = retrieve_context(prompt)
     persona_text = personality_profiles.get(personality, "")
 
-    template = f"""[INST]
-{persona_text}
+    tone_map = {
+        "souschef": "ภาษาสุภาพ เรียบง่าย เหมือนครูใจดี",
+        "buddy": "เป็นกันเอง ขำได้ เข้าใจง่าย เหมือนเพื่อน",
+        "chef-ian": "นิ่ง สุภาพ จริงจัง แทนตัวเองด้วย 'ผม' ตลอด"
+    }
+    tone_instruction = tone_map.get(personality, "สุภาพ ชัดเจน เข้าใจง่าย")
 
-คุณคือผู้ช่วยแนะนำอาหารไทยผ่านแชตอย่างมืออาชีพ
+    if lang == "en":
+        language_instruction = f"""
+Reply in English only.
 
-- เมื่อตอบคำถามเกี่ยวกับเมนูอาหาร ให้ตอบทั้งชื่อเมนู, รายการส่วนผสม และขั้นตอนการทำโดยละเอียด
-- อย่าตอบเมนูอื่นถ้าไม่ได้รับการถามใหม่
-- ใช้ข้อมูลจาก Context เพื่อช่วยให้คำแนะนำละเอียดและแม่นยำ
-- ถ้าไม่มี context เพียงพอ ให้ตอบเมนูที่เกี่ยวข้องและให้สูตรอย่างชัดเจน
+- Include dish name, ingredients, and steps.
+- Suggest only related Thai dishes if context is unclear.
+- Suggest only one menu per question.
 
-เมื่อเหมาะสม ให้ถามกลับ เช่น  
-“อยากรู้เมนูอื่นเพิ่มเติมไหมครับ?” หรือ “มีวัตถุดิบอื่นที่อยากใช้เพิ่มเติมไหม?”
+Tone: {tone_instruction}
+"""
+    else:
+        language_instruction = f"""
+ตอบไทยเท่านั้น
 
----
+- ระบุชื่อเมนู, ส่วนผสม, วิธีทำชัดเจน
+- ไม่แนะนำเมนูอื่นถ้าไม่ได้ถาม
+- ใช้ context ที่มี หรือแนะนำเมนูใกล้เคียง
+- ตอบทีละหนึ่งเมนู
 
-Context:
-{context}
+โทน: {tone_instruction}
+"""
 
-คำถาม:
-{prompt}
-[/INST]"""
+    system_message = f"{persona_text.strip()}\n{language_instruction.strip()}"
+    user_message = f"Context:\n{context}\n\nQuestion:\n{prompt}"
 
-
-    result = subprocess.run(
-        ["ollama", "run", "llama3.1", template],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    return result.stdout.strip()
+    try:
+        response = ollama.chat(
+            model="gemma3",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        return response["message"]["content"].strip()
+    except Exception as e:
+        return f"เกิดข้อผิดพลาด: {str(e)}"
 
 
 # 🟢 API รับแค่ string + personality
 class ChatRequest(BaseModel):
     question: str
     personality: Optional[str] = "souschef"
+    lang: Literal["th", "en"] = "th"
 
 
 @app.post("/ask")
 async def ask_question(request: ChatRequest):
+    print(request.question)
+    corrected_question = preprocess_input(request.question)
+    print(corrected_question)
     return {
-        "answer": generate_response(request.question, request.personality or "souschef")
+        "answer": generate_response(
+            corrected_question,
+            request.personality or "souschef",
+            request.lang or "th",
+        )
     }
