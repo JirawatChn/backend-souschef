@@ -9,6 +9,7 @@ from sentence_transformers import SentenceTransformer
 from pythainlp.spell import correct
 import ollama
 
+
 def preprocess_input(user_input: str) -> str:
     return correct(user_input.strip())
 
@@ -20,7 +21,7 @@ with open("texts.pkl", "rb") as f:
     texts = pickle.load(f)
 
 
-# 🔍 ดึง context
+# ดึง context
 def retrieve_context(query, k=3):
     query_vec = embedder.encode([query], convert_to_numpy=True)
     faiss.normalize_L2(query_vec)
@@ -28,7 +29,7 @@ def retrieve_context(query, k=3):
     return "\n".join([texts[i] for i in I[0]])
 
 
-# 🔥 FastAPI setup
+# FastAPI setup
 app = FastAPI()
 
 app.add_middleware(
@@ -39,16 +40,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔑 Persona profiles
+# Persona profiles
 personality_profiles = {
     "souschef": """คุณคือผู้ช่วยเชฟที่สุภาพ รอบรู้เรื่องอาหารไทย  
-อธิบายขั้นตอนชัดเจน เข้าใจง่าย เสมือนอยู่ข้างผู้ใช้ในครัว  
-แนะนำเมนูตามวัตถุดิบ พร้อมเทคนิคทำให้อร่อยมั่นใจ""",
-    
+อธิบายขั้นตอนชัดเจน เข้าใจง่าย แนะนำเมนูตามวัตถุดิบ พร้อมเทคนิคทำให้อร่อยมั่นใจ 
+ใช้คำว่า “ฉัน” ทุกคำแนะนำ""",
     "buddy": """คุณคือเพื่อนซี้สายทำอาหาร พูดตรง ขี้แซว แต่จริงใจ  
 คุยแบบเป็นกันเอง พร้อมบ่นแต่ก็ช่วยเต็มที่  
-ให้สูตรเข้าใจง่าย มีทริคแถม และพูดเหมือนยืนหน้ากระทะด้วยกัน""",
-    
+ให้สูตรเข้าใจง่าย มีทริคแถม และพูดเหมือนยืนหน้ากระทะด้วยกัน ใช้คำว่า “ฉัน” ทุกคำแนะนำ""",
     "chef-ian": """คุณคือเชฟเอียนมืออาชีพ พูดนิ่ง สุภาพ จริงจัง  
 แนะนำแบบตรงไปตรงมา ใส่ใจรสชาติและเทคนิค  
 ใช้คำว่า “ผม” และลงท้ายด้วย “ครับ” ทุกคำแนะนำ""",
@@ -62,7 +61,7 @@ def generate_response(prompt: str, personality: str = "souschef", lang: str = "t
     tone_map = {
         "souschef": "ภาษาสุภาพ เรียบง่าย เหมือนครูใจดี",
         "buddy": "เป็นกันเอง ขำได้ เข้าใจง่าย เหมือนเพื่อน",
-        "chef-ian": "นิ่ง สุภาพ จริงจัง แทนตัวเองด้วย 'ผม' ตลอด"
+        "chef-ian": "นิ่ง สุภาพ จริงจัง แทนตัวเองด้วย 'ผม' ตลอด",
     }
     tone_instruction = tone_map.get(personality, "สุภาพ ชัดเจน เข้าใจง่าย")
 
@@ -96,8 +95,8 @@ Tone: {tone_instruction}
             model="gemma3",
             messages=[
                 {"role": "system", "content": system_message},
-                {"role": "user", "content": user_message}
-            ]
+                {"role": "user", "content": user_message},
+            ],
         )
         return response["message"]["content"].strip()
     except Exception as e:
