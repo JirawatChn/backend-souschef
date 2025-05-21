@@ -21,4 +21,6 @@ faiss.write_index(index, "thai_recipes.index")
 with open("texts.pkl", "wb") as f:
     pickle.dump(texts, f)
 
-print("✅ Index + texts saved.")
+print("Index + texts saved.")
+
+

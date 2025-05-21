@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal, Optional
@@ -8,10 +7,7 @@ import pickle
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from pythainlp.spell import correct
-from google import genai
-
-# โหลด API KEY จาก .env
-client = genai.Client(api_key="AIzaSyCai56noKNPuWd87W1F2slA7ABOS7hrNh8")
+import ollama
 
 # โหลดโมเดลฝังเวกเตอร์และ FAISS index
 embedder = SentenceTransformer("BAAI/bge-m3")
@@ -39,52 +35,20 @@ personality_profiles = {
 ใช้คำว่า “ผม” และลงท้ายด้วย “ครับ” ทุกคำแนะนำ""",
 }
 
-# สร้าง FastAPI instance
-app = FastAPI()
+def generate_response(prompt: str, personality: str = "souschef", lang: str = "th"):
+    context = retrieve_context(prompt, k=1) 
+    print(f"[DEBUG] Context token length: {len(''.join(context))}") 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # เปลี่ยนตาม frontend origin
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    persona_text = personality_profiles.get(personality, "")
 
-# รูปแบบคำขอจาก frontend
-class ChatRequest(BaseModel):
-    question: str
-    personality: Optional[str] = "souschef"
-    lang: Literal["th", "en"] = "th"
-
-chat_sessions = {}
-chat_histories = {}
-
-@app.post("/ask")
-async def ask_question(request: ChatRequest, raw_request: Request):
-    session_id = raw_request.headers.get("X-Session-ID")
-    if not session_id:
-        return {"error": "Missing session ID"}
-
-    if session_id not in chat_sessions:
-        chat_sessions[session_id] = client.chats.create(model="gemini-2.0-flash")
-    chat = chat_sessions[session_id]
-
-    # ใช้ตัวสะกดอัตโนมัติ
-    corrected_question = correct(request.question)
-
-    # ดึง context จาก RAG (ใช้ k=2 หรือ ปรับตามต้องการ)
-    context = retrieve_context(corrected_question, k=2)
-    
-    # เตรียมข้อความ prompt ผสม personality + tone + context + คำถาม
-    persona_text = personality_profiles.get(request.personality or "souschef", "")
     tone_map = {
         "souschef": "ภาษาสุภาพ เรียบง่าย เหมือนครูใจดี",
         "buddy": "เป็นกันเอง ขำได้ เข้าใจง่าย เหมือนเพื่อน",
         "chef-ian": "นิ่ง สุภาพ จริงจัง แทนตัวเองด้วย 'ผม' ตลอด",
     }
-    tone_instruction = tone_map.get(request.personality or "souschef", "สุภาพ ชัดเจน เข้าใจง่าย")
+    tone_instruction = tone_map.get(personality, "สุภาพ ชัดเจน เข้าใจง่าย")
 
-    if request.lang == "en":
+    if lang == "en":
         language_instruction = f"""
 Reply in English only.
 
@@ -100,6 +64,7 @@ Tone: {tone_instruction}
 คุณคือผู้ช่วยที่จะคอยแนะนำเมนูอาหารไทยที่เหมาะสมกับคำถามของผู้ใช้
 
 **ตอบเฉพาะเรื่องอาหารเท่านั้น**
+
 - ตอบเฉพาะเมนูอาหารที่เกี่ยวข้องกับคำถามเท่านั้น
 - ห้ามเสนอตัวเลือกอื่น หรือแนะนำเมนูอื่นถ้าไม่ได้ถามโดยตรง
 - ห้ามใช้ภาษาคลุมเครือ ให้ระบุชื่อเมนู, ส่วนผสม, และวิธีทำอย่างชัดเจน
@@ -107,32 +72,56 @@ Tone: {tone_instruction}
 - ตอบทีละหนึ่งเมนูเท่านั้น ห้ามตอบหลายเมนู
 - ไม่ตอบนอกเรื่องโดยเด็ดขาด
 
-** หากคำถามเป็นแนว "ทำอะไรกินดี" หรือ "มีเมนูแนะนำไหม" ให้ตอบเมนูอาหารตรง ๆ ทันที โดยไม่กล่าวถึงวัตถุดิบของผู้ใช้ และตอบแค่ 3 เมนู**
-
 **หากไม่สามารถตอบโดยยึดตามเงื่อนไขข้างต้นได้ ให้ตอบว่า "ไม่มีข้อมูลเกี่ยวกับคำถามนี้"**
 
 โทน: {tone_instruction}
 """
 
-    full_prompt = f"""{persona_text.strip()}
+    system_message = f"{persona_text.strip()}\n{language_instruction.strip()}"
+    
+    # เพิ่มข้อความที่ทำให้ LLM เข้าใจว่า context คือข้อมูลที่ให้คำตอบเกี่ยวกับเมนูอาหาร
+    user_message = f"ข้อมูลที่เกี่ยวข้อง: {''.join(context)}\n\nคำถาม: {prompt}"
+    print(lang)
+    print(language_instruction)
 
-{language_instruction.strip()}
+    try:
+        response = ollama.chat(
+            model="gemma3",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        return response["message"]["content"].strip()
+    except Exception as e:
+        return f"เกิดข้อผิดพลาด: {str(e)}"
 
-บริบทของคำถาม:
-{context}
 
-คำถาม:
-{corrected_question}
-"""
 
-    print(f"[DEBUG] Session ID: {session_id}")
-    print(f"[DEBUG] Prompt to Gemini:\n{full_prompt}")
+# สร้าง FastAPI instance
+app = FastAPI()
 
-    # ส่ง prompt เข้า chat session ของ Gemini
-    response = chat.send_message(full_prompt)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    print(f"[DEBUG] AI answer: {response.text.strip()}")
+# รูปแบบคำขอจาก frontend
+class ChatRequest(BaseModel):
+    question: str
+    personality: Optional[str] = "souschef"
+    lang: Literal["th", "en"] = "th"
 
+@app.post("/ask")
+async def ask_question(request: ChatRequest):
+    corrected_question = correct(request.question)
     return {
-        "answer": response.text.strip()
+        "answer": generate_response(
+            corrected_question,
+            request.personality or "souschef",
+            request.lang or "th",
+        )
     }
