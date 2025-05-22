@@ -44,7 +44,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # เปลี่ยนตาม frontend origin
+    allow_origins=["http://localhost:5173","https://jirawatchn.github.io"],  # เปลี่ยนตาม frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,11 +86,18 @@ async def ask_question(request: ChatRequest, raw_request: Request):
 
     if request.lang == "en":
         language_instruction = f"""
-Reply in English only.
+** Translate Menu, Tone, Personality and Reply in English only **
+You are a cooking assistant that recommends appropriate Thai dishes based on the user's question.
 
-- Include dish name, ingredients, and steps.
-- Suggest only related Thai dishes if context is unclear.
-- Suggest only one menu per question.
+**Only answer food-related questions**
+- Recommend only one Thai dish that matches the user's question.
+- Do not offer multiple options or alternative dishes unless asked directly.
+- Be specific: include the dish name, ingredients, and preparation steps clearly.
+- If the context is unclear, suggest the most relevant dish and justify your choice based on facts or logical relevance.
+- Do NOT respond with vague or general language.
+- If the question is like "What should I eat?" or "Any suggestions?", directly recommend one Thai dish and explain how to make it.
+
+**If you cannot comply with the above rules, respond with "No information available for this question."**
 
 Tone: {tone_instruction}
 """
@@ -107,7 +114,7 @@ Tone: {tone_instruction}
 - ตอบทีละหนึ่งเมนูเท่านั้น ห้ามตอบหลายเมนู
 - ไม่ตอบนอกเรื่องโดยเด็ดขาด
 
-** หากคำถามเป็นแนว "ทำอะไรกินดี" หรือ "มีเมนูแนะนำไหม" ให้ตอบเมนูอาหารตรง ๆ ทันที โดยไม่กล่าวถึงวัตถุดิบของผู้ใช้ และตอบแค่ 3 เมนู**
+** หากคำถามเป็นแนว "ทำอะไรกินดี" หรือ "มีเมนูแนะนำไหม" ให้ตอบเมนูอาหารตรง ๆ และวิธีทำ โดยไม่กล่าวถึงบริบทที่ให้ไป**
 
 **หากไม่สามารถตอบโดยยึดตามเงื่อนไขข้างต้นได้ ให้ตอบว่า "ไม่มีข้อมูลเกี่ยวกับคำถามนี้"**
 
