@@ -5,7 +5,6 @@ numpy
 faiss-cpu
 sentence-transformers
 pythainlp
-ollama
 google-genai
 pandas
 python-dotenv
