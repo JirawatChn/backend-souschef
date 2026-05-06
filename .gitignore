@@ -1,8 +1,12 @@
 .env
 __pycache__/
 *.pyc
-*.pkl
-*.index
-*.jsonl
-*.csv
 *.pem
+*.csv
+
+# ไม่ใช้แล้ว
+thai_recipes_bge_m3.index
+
+# source data ไม่ต้องขึ้น
+new-vector-database.py
+create-index.py

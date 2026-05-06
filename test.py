@@ -11,11 +11,11 @@ from sentence_transformers import SentenceTransformer
 import argparse
 
 # ---- พาธไฟล์ RAG ----
-INDEX_PATH = "thai_recipes_bge_m3.index"
+INDEX_PATH = "thai_recipes_minilm.index"
 TEXTS_PATH = "child_texts.pkl"
 META_PATH  = "child_meta.pkl"
 DOCSTORE   = "menus_docstore.jsonl"
-EMBED_MODEL = "BAAI/bge-m3"
+EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 # ---- น้ำหนักฟิลด์ (boost) ----
 FIELD_WEIGHTS = {
