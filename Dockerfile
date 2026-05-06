@@ -21,8 +21,8 @@ COPY child_texts.pkl ./
 COPY child_meta.pkl ./
 COPY menus_docstore.jsonl ./
 
-ENV PORT=8080
+ENV PORT=7860
 
-EXPOSE 8080
+EXPOSE 7860
 
 CMD ["python", "main.py"]
