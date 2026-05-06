@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+__pycache__
+*.pyc
+*.pyo
+*.csv
+*.md
+CLAUDE.md
+# old/unused files
+create-index.py
+new-vector-database.py
+ollama.py
+api.py
+test.py
